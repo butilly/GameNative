@@ -1413,12 +1413,14 @@ internal fun ExecutablePathDropdown(
     var expanded by remember { mutableStateOf(false) }
     var executables by remember { mutableStateOf<List<String>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var executableScanGeneration by remember { mutableIntStateOf(0) }
     var showCustomPathDialog by remember { mutableStateOf(false) }
     var customPathText by remember { mutableStateOf("") }
     val context = LocalContext.current
 
-    // Load executables from A: drive when component is first created
-    LaunchedEffect(containerData.drives) {
+    // Load executables initially and refresh whenever the menu is opened so files copied while
+    // Container Settings is visible become selectable without closing and reopening the dialog.
+    LaunchedEffect(containerData.drives, executableScanGeneration) {
         isLoading = true
         executables = withContext(Dispatchers.IO) {
             ContainerUtils.scanExecutablesInADrive(containerData.drives)
@@ -1428,7 +1430,10 @@ internal fun ExecutablePathDropdown(
 
     ExposedDropdownMenuBox(
         expanded = expanded,
-        onExpandedChange = { expanded = it },
+        onExpandedChange = {
+            expanded = it
+            if (it) executableScanGeneration++
+        },
         modifier = modifier
     ) {
         NoExtractOutlinedTextField(
