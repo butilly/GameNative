@@ -15,8 +15,9 @@ import android.view.Display
 import androidx.annotation.RequiresApi
 import app.gamenative.powercontrol.PowerManager
 import app.gamenative.powercontrol.metrics.FrameTimeRing
-import app.gamenative.powercontrol.metrics.GpuUsageSampler
+import app.gamenative.powercontrol.metrics.SharedGpuUsage
 import app.gamenative.powercontrol.metrics.SystemMetricsSources
+import app.gamenative.powercontrol.metrics.ThermalHeadroom
 import com.winlator.container.Container
 import org.json.JSONArray
 import org.json.JSONObject
@@ -468,14 +469,14 @@ object PerfSampler {
         private val clusters: List<PerfCluster> = runCatching { discoverClusters() }.getOrDefault(emptyList())
         private val coreCount: Int = runCatching { discoverCoreCount() }.getOrDefault(Runtime.getRuntime().availableProcessors())
         private val gpuFreqPath: String? = runCatching { discoverGpuFreqPath() }.getOrNull()
-        private val skinTempPaths: List<String> = runCatching { discoverSkinTempPaths() }.getOrDefault(emptyList())
+        private val skinTempPaths: List<String> = runCatching { SystemMetricsSources.skinTempPaths() }.getOrDefault(emptyList())
         private val refreshRateHz: Float = runCatching { readRefreshRate() }.getOrDefault(60f)
         private val maxAvailableKhz: Long? = runCatching { PowerManager.getAvailableCpuFrequencies().maxOrNull() }.getOrNull()
         private val installPath: String? = runCatching { gameDrivePath(drives) }.getOrNull()
         private val installLocation: String? = installPath?.let { classifyInstallPath(it) }
         private val totalMemMb: Int? = runCatching { memoryInfo()?.totalMem?.div(MB)?.toInt() }.getOrNull()
 
-        private val gpuSampler = GpuUsageSampler()
+        private val gpuUsage = SharedGpuUsage()
         private var prevCpuStat: Map<String, LongArray>? = null
         private var prevProcTicks = HashMap<Int, Long>()
         private val procNames = HashMap<Int, String>()
@@ -631,7 +632,7 @@ object PerfSampler {
 
             if (cpuProfile) cpuProfileProbe.run { sampleCpuProfile(nowMs, t, gameProcess, wineserver) }
 
-            val gpu = safe { gpuSampler.sample()?.percent }
+            val gpu = safe { gpuUsage.read()?.percent }
             val gpuMhz = safe { readGpuMhz() }
             val curMhz = if (clusters.isEmpty()) null else safe { readClusterFreq("scaling_cur_freq") }
             val maxMhz = if (clusters.isEmpty()) null else safe { readClusterFreq("scaling_max_freq") }
@@ -998,10 +999,7 @@ object PerfSampler {
             (context.getSystemService(Context.POWER_SERVICE) as? AndroidPowerManager)?.currentThermalStatus
 
         @RequiresApi(Build.VERSION_CODES.R)
-        private fun readThermalHeadroom(): Float? =
-            (context.getSystemService(Context.POWER_SERVICE) as? AndroidPowerManager)
-                ?.getThermalHeadroom(10)
-                ?.takeIf { it.isFinite() }
+        private fun readThermalHeadroom(): Float? = ThermalHeadroom.read(context)
 
         private fun readBatteryTempC(): Int? {
             val intent: Intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return null
@@ -1072,18 +1070,6 @@ object PerfSampler {
                 }
             }
             return null
-        }
-
-        private fun discoverSkinTempPaths(): List<String> {
-            return listOf(File("/sys/class/thermal"), File("/sys/devices/virtual/thermal")).flatMap { root ->
-                val zones = root.listFiles { file -> file.isDirectory && file.name.startsWith("thermal_zone") }
-                    ?: return@flatMap emptyList()
-                zones.mapNotNull { zone ->
-                    val type = SystemMetricsSources.readFirstLine(File(zone, "type").path)?.trim()?.lowercase(Locale.US)
-                        ?: return@mapNotNull null
-                    if (type.contains("skin")) File(zone, "temp").path else null
-                }
-            }.distinct()
         }
 
         private fun gameDrivePath(drives: String?): String? {
