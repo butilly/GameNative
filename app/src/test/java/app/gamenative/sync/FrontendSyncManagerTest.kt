@@ -43,6 +43,14 @@ class FrontendSyncManagerTest {
         }
     }
 
+    @Test
+    fun `exportFileNameFor uses filesystem safe name shared by manual and automatic export`() {
+        assertEquals(
+            "Batman_ Arkham Asylum.steam",
+            FrontendSyncManager.exportFileNameFor("Batman: Arkham Asylum", GameSource.STEAM),
+        )
+    }
+
     // endregion
 
     // region deleteAllFilesWithExtension

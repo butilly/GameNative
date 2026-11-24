@@ -41,6 +41,7 @@ import app.gamenative.data.withoutTitleOnlyDescription
 import app.gamenative.events.AndroidEvent
 import app.gamenative.mods.ModContainerResolver
 import app.gamenative.mods.NexusModManager
+import app.gamenative.sync.FrontendSyncManager
 import app.gamenative.ui.component.dialog.CommunityConfigsDialog
 import app.gamenative.ui.component.dialog.ContainerConfigDialog
 import app.gamenative.ui.component.dialog.ExportFilesDialog
@@ -597,11 +598,10 @@ abstract class BaseAppScreen {
     ): AppMenuOption? {
         val gameId = getGameId(libraryItem)
         val gameName = getGameName(context, libraryItem)
-        val extension = getExportFileExtension()
         return AppMenuOption(
             optionType = AppOptionMenuType.ExportFrontend,
             onClick = {
-                val suggested = "${gameName}$extension"
+                val suggested = FrontendSyncManager.exportFileNameFor(gameName, getGameSource(libraryItem))
                 exportFrontendLauncher.launch(suggested)
             },
         )
